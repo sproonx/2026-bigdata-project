@@ -1,0 +1,45 @@
+version: '3.3'
+
+networks:
+  bigdatanet:
+    driver: bridge
+
+services:
+  hadoop:
+    image: marcelmittelstaedt/spark_base:latest
+    container_name: hadoop
+    ports:
+      - "8088:8088"
+      - "9870:9870"
+      - "9864:9864"
+      - "10000:10000"
+      - "8032:8032"
+      - "8030:8030"
+      - "8031:8031"
+      - "9000:9000"
+      - "8888:8888"
+    networks:
+      - bigdatanet
+    command: >
+      bash -c "service ssh start &&
+      start-all.sh &&
+      hiveserver2 &&
+      tail -f /dev/null"
+
+  airflow:
+    image: marcelmittelstaedt/airflow:latest
+    container_name: airflow
+    volumes:
+            - ./airflow_vol/dags:/home/airflow/airflow/dags
+    ports:
+      - "8080:8080"
+    networks:
+      - bigdatanet
+    depends_on:
+      - hadoop
+    command: >
+      bash -c "airflow db init &&
+      airflow webserver &
+      airflow scheduler &
+      tail -f /dev/null"
+
