@@ -30,7 +30,8 @@ services:
     image: marcelmittelstaedt/airflow:latest
     container_name: airflow
     volumes:
-            - ./airflow_vol/dags:/home/airflow/airflow/dags
+      - ./airflow_vol/dags:/home/airflow/airflow/dags
+      - ./airflow_vol/plugins/:/home/airflow/airflow/plugins
     ports:
       - "8080:8080"
     networks:
