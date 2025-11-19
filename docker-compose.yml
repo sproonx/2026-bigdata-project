@@ -8,6 +8,8 @@ services:
   hadoop:
     image: marcelmittelstaedt/spark_base:latest
     container_name: hadoop
+    volumes:
+      - ./hadoop_vol/startup.sh:/startup.sh
     ports:
       - "8088:8088"
       - "9870:9870"
@@ -20,11 +22,6 @@ services:
       - "8888:8888"
     networks:
       - bigdatanet
-    command: >
-      bash -c "service ssh start &&
-      start-all.sh &&
-      hiveserver2 &&
-      tail -f /dev/null"
 
   airflow:
     image: marcelmittelstaedt/airflow:latest
