@@ -1,12 +1,12 @@
 from airflow.plugins_manager import AirflowPlugin
 from operators.hdfs_put_file_operator import *
 from operators.hdfs_get_file_operator import *
-from operators.hdfs_mkdir_file_operator import *
+from operators.hdfs_mkdirs_file_operator import *
 from hooks.hdfs_hook import *
 
 class HdfsPlugin(AirflowPlugin):
     name = "hdfs_operations"
-    operators = [HdfsPutFileOperator, HdfsGetFileOperator, HdfsMkdirFileOperator]
+    operators = [HdfsPutFileOperator, HdfsGetFileOperator, HdfsMkdirsFileOperator]
     hooks = [HdfsHook]
     executors = []
     macros = []
