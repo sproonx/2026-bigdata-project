@@ -9,13 +9,14 @@ from airflow.operators.zip_folder_operations import UnzipFolderOperator
 from airflow.operators.hdfs_operations import (
     HdfsPutFileOperator,
     HdfsGetFileOperator,
-    HdfsMkdirFileOperator,
+    HdfsMkdirsFileOperator,
 )
 from airflow.operators.filesystem_operations import (
     CreateDirectoryOperator,
     ClearDirectoryOperator,
 )
 from airflow.operators.hive_operator import HiveOperator
+from airflow.operators.bash_operator import BashOperator
 
 args = {"owner": "airflow"}
 
@@ -48,16 +49,31 @@ clear_local_import_dir = ClearDirectoryOperator(
 download_hubway_data = HttpDownloadOperator(
     task_id="download_hubway_data",
     download_uri="https://www.kaggle.com/api/v1/datasets/download/acmeyer/hubway-data",
-    save_to="/home/airflow/bikesharing/hubway_data_{{ ds }}.zip",
+    save_to="/home/airflow/bikesharing/hubway_data.zip",
     dag=dag,
 )
 
 unzip_hubway_data = UnzipFolderOperator(
     task_id="unzip_hubway_data",
-    zip_file="/home/airflow/bikesharing/hubway_data_{{ ds }}.zip",
-    extract_to="/home/airflow/bikesharing/hubway_data_{{ ds }}/",
+    zip_file="/home/airflow/bikesharing/hubway_data.zip",
+    extract_to="/home/airflow/bikesharing/hubway_data/",
+    dag=dag,
+)
+
+combine_old_format_split_years = BashOperator(
+    task_id="combine_old_format_split_years",
+    bash_command='''
+        cd /home/airflow/bikesharing/hubway_data/
+        for year in $(ls hubway_Trips_*_*.csv | sed -E 's/.*hubway_Trips_([0-9]{4})_.*/\\1/' | sort -u); do
+            count=$(ls hubway_Trips_${year}_*.csv 2>/dev/null | wc -l)
+            if [ "$count" -gt 0 ]; then
+                cat hubway_Trips_${year}_*.csv > hubway_Trips_${year}.csv
+                rm hubway_Trips_${year}_*.csv
+            fi
+        done
+    ''',
     dag=dag,
 )
 
 # Dependencies
-create_local_import_dir >> clear_local_import_dir >> download_hubway_data >> unzip_hubway_data
+create_local_import_dir >> clear_local_import_dir >> download_hubway_data >> unzip_hubway_data >> combine_old_format_split_years
