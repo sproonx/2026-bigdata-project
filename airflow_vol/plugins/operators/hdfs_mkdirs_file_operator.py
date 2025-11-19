@@ -5,6 +5,7 @@ from airflow.exceptions import AirflowException
 
 from hooks.hdfs_hook import HdfsHook
 import posixpath
+import ast
 
 class HdfsMkdirsFileOperator(BaseOperator):
 
@@ -14,8 +15,8 @@ class HdfsMkdirsFileOperator(BaseOperator):
     @apply_defaults
     def __init__(
             self,
-            parent_directory=None,
-            folder_names=None,
+            parent_directory,
+            folder_names,
             hdfs_conn_id,
             *args, **kwargs):
         """
@@ -41,9 +42,12 @@ class HdfsMkdirsFileOperator(BaseOperator):
         hh = HdfsHook(hdfs_conn_id=self.hdfs_conn_id)
         hh.mkdir(self.parent_directory)
 
+        self.folder_names = ast.literal_eval(self.folder_names)
+           
         self.log.info("Iterating over folder names to create directories.")
 
         if not isinstance(self.folder_names, list):
+            self.log.error(f"'folder_names': {self.folder_names} is type {type(self.folder_names)}")
             raise AirflowException("'folder_names' must be a list of folder name strings.")
 
         for name in self.folder_names:

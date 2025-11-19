@@ -7,7 +7,7 @@ from airflow.contrib.operators.spark_submit_operator import SparkSubmitOperator
 from airflow.operators.http_download_operations import HttpDownloadOperator
 from airflow.operators.zip_folder_operations import UnzipFolderOperator
 from airflow.operators.hdfs_operations import (
-    HdfsPutFileOperator,
+    HdfsPutFilesOperator,
     HdfsGetFileOperator,
     HdfsMkdirsFileOperator,
 )
@@ -15,10 +15,15 @@ from airflow.operators.filesystem_operations import (
     CreateDirectoryOperator,
     ClearDirectoryOperator,
 )
-from airflow.operators.hive_operator import HiveOperator
-from airflow.operators.bash_operator import BashOperator
 
-args = {"owner": "airflow"}
+from airflow.operators.bash_operator import BashOperator
+from airflow.operators.python_operator import PythonOperator
+
+from python.file_name_formatting import *
+
+args = {
+    "owner": "airflow"
+}
 
 # DAG definition
 dag = DAG(
@@ -35,13 +40,27 @@ dag = DAG(
 create_local_import_dir = CreateDirectoryOperator(
     task_id="create_import_dir",
     path="/home/airflow",
-    directory="bikesharing",
+    directory="bikesharing_input",
     dag=dag,
 )
 
 clear_local_import_dir = ClearDirectoryOperator(
     task_id="clear_import_dir",
-    directory="/home/airflow/bikesharing",
+    directory="/home/airflow/bikesharing_input",
+    pattern="*",
+    dag=dag,
+)
+
+create_local_output_dir = CreateDirectoryOperator(
+    task_id="create_output_dir",
+    path="/home/airflow",
+    directory="bikesharing_output",
+    dag=dag,
+)
+
+clear_local_output_dir = ClearDirectoryOperator(
+    task_id="clear_output_dir",
+    directory="/home/airflow/bikesharing_output",
     pattern="*",
     dag=dag,
 )
@@ -49,21 +68,21 @@ clear_local_import_dir = ClearDirectoryOperator(
 download_hubway_data = HttpDownloadOperator(
     task_id="download_hubway_data",
     download_uri="https://www.kaggle.com/api/v1/datasets/download/acmeyer/hubway-data",
-    save_to="/home/airflow/bikesharing/hubway_data.zip",
+    save_to="/home/airflow/bikesharing_input/hubway_data.zip",
     dag=dag,
 )
 
 unzip_hubway_data = UnzipFolderOperator(
     task_id="unzip_hubway_data",
-    zip_file="/home/airflow/bikesharing/hubway_data.zip",
-    extract_to="/home/airflow/bikesharing/hubway_data/",
+    zip_file="/home/airflow/bikesharing_input/hubway_data.zip",
+    extract_to="/home/airflow/bikesharing_input/hubway_data/",
     dag=dag,
 )
 
-combine_old_format_split_years = BashOperator(
+combine_split_years_old_format = BashOperator(
     task_id="combine_old_format_split_years",
     bash_command='''
-        cd /home/airflow/bikesharing/hubway_data/
+        cd /home/airflow/bikesharing_input/hubway_data/
         for year in $(ls hubway_Trips_*_*.csv | sed -E 's/.*hubway_Trips_([0-9]{4})_.*/\\1/' | sort -u); do
             count=$(ls hubway_Trips_${year}_*.csv 2>/dev/null | wc -l)
             if [ "$count" -gt 0 ]; then
@@ -75,5 +94,101 @@ combine_old_format_split_years = BashOperator(
     dag=dag,
 )
 
+get_yyyy_old_format = PythonOperator(
+    task_id="get_yyyy_old_format",
+    python_callable=get_yyyy_old_format,
+    op_kwargs={"parent_dir_path": "/home/airflow/bikesharing_input/hubway_data/"},
+    dag=dag,
+)
+
+create_raw_hdfs_dir_old_format = HdfsMkdirsFileOperator(
+    task_id="create_raw_hdfs_dir_old_format",
+    parent_directory="/data/bikesharing/raw/",
+    folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyy_old_format') }}",
+    hdfs_conn_id="hdfs",
+    dag=dag,
+)
+create_raw_hdfs_dir_old_format.set_upstream(get_yyyy_old_format)
+
+
+get_yyyyMM_old_format = PythonOperator(
+    task_id="get_yyyyMM_old_format",
+    python_callable=get_yyyyMM_old_format,
+    op_kwargs={"parent_dir_path": "/home/airflow/bikesharing_input/hubway_data/"},
+    dag=dag,
+)
+
+create_raw_hdfs_dir_old_format_with_months = HdfsMkdirsFileOperator(
+    task_id="create_raw_hdfs_dir_old_format_with_months",
+    parent_directory="/data/bikesharing/raw/",
+    folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_old_format') }}",
+    hdfs_conn_id="hdfs",
+    dag=dag,    
+)
+create_raw_hdfs_dir_old_format_with_months.set_upstream(get_yyyyMM_old_format)
+
+get_yyyyMM_new_format = PythonOperator(
+    task_id="get_yyyyMM_new_format",
+    python_callable=get_yyyyMM_new_format,
+    op_kwargs={"parent_dir_path": "/home/airflow/bikesharing_input/hubway_data/"},
+    dag=dag,
+)
+
+create_raw_hdfs_dir_new_format = HdfsMkdirsFileOperator(
+    task_id="create_raw_hdfs_dir_new_format",
+    parent_directory="/data/bikesharing/raw/",
+    folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_new_format') }}",
+    hdfs_conn_id="hdfs",
+    dag=dag,
+)
+create_raw_hdfs_dir_new_format.set_upstream(get_yyyyMM_new_format)
+
+create_final_hdfs_dir_old_format_with_months = HdfsMkdirsFileOperator(
+    task_id="create_final_hdfs_dir_old_format_with_months",
+    parent_directory="/data/bikesharing/raw/",
+    folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_old_format') }}",
+    hdfs_conn_id="hdfs",
+    dag=dag,    
+)
+create_final_hdfs_dir_old_format_with_months.set_upstream(get_yyyyMM_old_format)
+
+create_final_hdfs_dir_new_format = HdfsMkdirsFileOperator(
+    task_id="create_final_hdfs_dir_new_format",
+    parent_directory="/data/bikesharing/raw/",
+    folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_new_format') }}",
+    hdfs_conn_id="hdfs",
+    dag=dag,
+)
+create_final_hdfs_dir_new_format.set_upstream(get_yyyyMM_new_format)
+
+get_mv_import_raw_pairs = PythonOperator(
+    task_id="get_mv_import_raw_pairs",
+    python_callable=get_mv_import_raw_pairs,
+    op_kwargs={"parent_dir_path": "/data/bikesharing/import/"},
+    dag=dag,
+)
+
+hdfs_put_files = HdfsPutFilesOperator(
+    task_id="hdfs_put_files",
+    local_remote_pairs="{{ task_instance.xcom_pull(task_ids='get_mv_import_raw_pairs') }}",
+    hdfs_conn_id="hdfs",
+    dag=dag,
+)
+hdfs_put_files.set_upstream(get_mv_import_raw_pairs)
+
+# Dummies
+data_import = DummyOperator(task_id="data_import", dag=dag)
+hdfs_setup = DummyOperator(task_id="hdfs_setup", dag=dag)
+data_preparation = DummyOperator(task_id="data_preparation", dag=dag)
+
 # Dependencies
-create_local_import_dir >> clear_local_import_dir >> download_hubway_data >> unzip_hubway_data >> combine_old_format_split_years
+data_import >> create_local_import_dir >> clear_local_import_dir >> download_hubway_data >> unzip_hubway_data >> hdfs_setup
+data_import >> create_local_output_dir >> clear_local_output_dir >> download_hubway_data
+
+hdfs_setup >> combine_split_years_old_format >> get_yyyy_old_format >> create_raw_hdfs_dir_old_format >> get_mv_import_raw_pairs
+hdfs_setup >> combine_split_years_old_format >> get_yyyyMM_old_format >> create_raw_hdfs_dir_old_format_with_months >> get_mv_import_raw_pairs
+get_yyyyMM_old_format >> create_final_hdfs_dir_old_format_with_months
+hdfs_setup >> get_yyyyMM_new_format >> create_raw_hdfs_dir_new_format >> get_mv_import_raw_pairs
+get_yyyyMM_new_format >> create_final_hdfs_dir_new_format
+
+get_mv_import_raw_pairs >> hdfs_put_files >> data_preparation
