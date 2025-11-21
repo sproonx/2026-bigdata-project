@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 from datetime import datetime
 from airflow import DAG
@@ -19,7 +18,7 @@ from airflow.operators.filesystem_operations import (
 from airflow.operators.bash_operator import BashOperator
 from airflow.operators.python_operator import PythonOperator
 
-from python.file_name_formatting import *
+from utils.file_name_formatting import *
 
 args = {
     "owner": "airflow"
@@ -145,7 +144,7 @@ create_raw_hdfs_dir_new_format.set_upstream(get_yyyyMM_new_format)
 
 create_final_hdfs_dir_old_format_with_months = HdfsMkdirsFileOperator(
     task_id="create_final_hdfs_dir_old_format_with_months",
-    parent_directory="/data/bikesharing/raw/",
+    parent_directory="/data/bikesharing/final/",
     folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_old_format') }}",
     hdfs_conn_id="hdfs",
     dag=dag,    
@@ -154,7 +153,7 @@ create_final_hdfs_dir_old_format_with_months.set_upstream(get_yyyyMM_old_format)
 
 create_final_hdfs_dir_new_format = HdfsMkdirsFileOperator(
     task_id="create_final_hdfs_dir_new_format",
-    parent_directory="/data/bikesharing/raw/",
+    parent_directory="/data/bikesharing/final/",
     folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_new_format') }}",
     hdfs_conn_id="hdfs",
     dag=dag,
@@ -164,7 +163,7 @@ create_final_hdfs_dir_new_format.set_upstream(get_yyyyMM_new_format)
 get_mv_import_raw_pairs = PythonOperator(
     task_id="get_mv_import_raw_pairs",
     python_callable=get_mv_import_raw_pairs,
-    op_kwargs={"parent_dir_path": "/data/bikesharing/import/"},
+    op_kwargs={"parent_dir_path": "/home/airflow/bikesharing_input/hubway_data/"},
     dag=dag,
 )
 
@@ -176,10 +175,44 @@ hdfs_put_files = HdfsPutFilesOperator(
 )
 hdfs_put_files.set_upstream(get_mv_import_raw_pairs)
 
+hdfs_put_files_station = HdfsPutFilesOperator(
+    task_id="hdfs_put_files_station",
+    local_remote_pairs="[('/home/airflow/bikesharing_input/hubway_data/Hubway_Stations_2011_2016.csv','/data/bikesharing/raw/Hubway_Stations_2011_2016.csv')]",
+    hdfs_conn_id="hdfs",
+    dag=dag,
+)
+
+run_clean_new_format = SparkSubmitOperator(
+    task_id="run_clean_new_format",
+    application="/home/airflow/airflow/spark/cleanNewFormat.py",
+    name="clean_new_format",
+    conn_id="spark",
+    application_args=[
+        "--base-path", "/data/bikesharing/raw",
+        "--output-path", "/data/bikesharing/final"
+    ],
+    conf={"spark.sql.sources.partitionOverwriteMode": "dynamic"},
+    dag=dag,
+)
+
+run_clean_old_format = SparkSubmitOperator(
+    task_id="run_clean_old_format",
+    application="/home/airflow/airflow/spark/cleanOldFormat.py",
+    name="clean_old_format",
+    conn_id="spark",
+    application_args=[
+        "--base-path", "/data/bikesharing/raw",
+        "--output-path", "/data/bikesharing/final",
+        "--stations-path", "/data/bikesharing/raw/Hubway_Stations_2011_2016.csv"
+    ],
+    conf={"spark.sql.sources.partitionOverwriteMode": "dynamic"},
+    dag=dag,
+)
+
 # Dummies
 data_import = DummyOperator(task_id="data_import", dag=dag)
 hdfs_setup = DummyOperator(task_id="hdfs_setup", dag=dag)
-data_preparation = DummyOperator(task_id="data_preparation", dag=dag)
+hdfs_process_final = DummyOperator(task_id="hdfs_process_final", dag=dag)
 
 # Dependencies
 data_import >> create_local_import_dir >> clear_local_import_dir >> download_hubway_data >> unzip_hubway_data >> hdfs_setup
@@ -191,4 +224,13 @@ get_yyyyMM_old_format >> create_final_hdfs_dir_old_format_with_months
 hdfs_setup >> get_yyyyMM_new_format >> create_raw_hdfs_dir_new_format >> get_mv_import_raw_pairs
 get_yyyyMM_new_format >> create_final_hdfs_dir_new_format
 
-get_mv_import_raw_pairs >> hdfs_put_files >> data_preparation
+get_mv_import_raw_pairs >> hdfs_put_files
+get_mv_import_raw_pairs >> hdfs_put_files_station
+
+hdfs_put_files >> run_clean_new_format
+hdfs_put_files >> run_clean_old_format
+
+hdfs_put_files_station >> run_clean_old_format
+
+run_clean_new_format >> hdfs_process_final
+run_clean_old_format >> hdfs_process_final

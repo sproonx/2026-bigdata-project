@@ -39,6 +39,8 @@ class HdfsPutFilesOperator(BaseOperator):
             self.log.error(f"'local_remote_pairs': {self.local_remote_pairs} is type {type(self.local_remote_pairs)}")
             raise AirflowException("'local_remote_pairs' must be a list of (local_file, remote_file) tuples.")
 
+        self.log.info(f"Uploading {len(self.local_remote_pairs)} files to HDFS.")
+        self.log.info(f"local_remote_pairs: {self.local_remote_pairs}")
         for local_file, remote_file in self.local_remote_pairs:
             self.log.info("Upload file '" + local_file + "' to HDFS '" + remote_file + "'.")
             hh = HdfsHook(hdfs_conn_id=self.hdfs_conn_id)

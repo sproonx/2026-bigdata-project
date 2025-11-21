@@ -29,6 +29,7 @@ services:
     volumes:
       - ./airflow_vol/dags:/home/airflow/airflow/dags
       - ./airflow_vol/plugins/:/home/airflow/airflow/plugins
+      - ./airflow_vol/spark/:/home/airflow/airflow/spark
     ports:
       - "8080:8080"
     networks:
