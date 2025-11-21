@@ -37,7 +37,8 @@ services:
     depends_on:
       - hadoop
     command: >
-      bash -c "airflow db init &&
+      bash -c "pip3 install openpyxl &&
+      airflow db init &&
       airflow webserver &
       airflow scheduler &
       tail -f /dev/null"

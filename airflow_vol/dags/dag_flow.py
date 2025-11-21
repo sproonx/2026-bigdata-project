@@ -152,6 +152,10 @@ run_clean_new_format = SparkSubmitOperator(
     application="/home/airflow/airflow/spark/cleanNewFormat.py",
     name="clean_new_format",
     conn_id="spark",
+    total_executor_cores="2",
+    executor_cores="2",
+    executor_memory="2g",
+    num_executors="2",
     application_args=[
         "--base-path", "/data/bikesharing/raw",
         "--output-path", "/data/bikesharing/final"
@@ -165,6 +169,10 @@ run_clean_old_format = SparkSubmitOperator(
     application="/home/airflow/airflow/spark/cleanOldFormat.py",
     name="clean_old_format",
     conn_id="spark",
+    total_executor_cores="2",
+    executor_cores="2",
+    executor_memory="2g",
+    num_executors="2",
     application_args=[
         "--base-path", "/data/bikesharing/raw",
         "--output-path", "/data/bikesharing/final",
@@ -174,10 +182,27 @@ run_clean_old_format = SparkSubmitOperator(
     dag=dag,
 )
 
+run_calculate_kpis = SparkSubmitOperator(
+    task_id="run_calculate_kpis",
+    application="/home/airflow/airflow/spark/calculateKPIs.py",
+    name="calculate_kpis",
+    conn_id="spark",
+    total_executor_cores="2",
+    executor_cores="2",
+    executor_memory="2g",
+    num_executors="2",
+    application_args=[
+        "--input-path", "/data/bikesharing/final",
+        "--output-path", "/home/airflow/bikesharing_output/kpis.xlsx"
+    ],
+    dag=dag,
+)
+
 # Dummies
 data_import = DummyOperator(task_id="data_import", dag=dag)
 hdfs_process_raw = DummyOperator(task_id="hdfs_process_raw", dag=dag)
 hdfs_process_final = DummyOperator(task_id="hdfs_process_final", dag=dag)
+kpis_calculated = DummyOperator(task_id="kpis_calculated", dag=dag)
 
 # Dependencies
 data_import >> create_local_import_dir >> clear_local_import_dir >> download_hubway_data >> unzip_hubway_data >> hdfs_process_raw
@@ -196,3 +221,5 @@ hdfs_put_files_station >> run_clean_old_format
 
 run_clean_new_format >> hdfs_process_final
 run_clean_old_format >> hdfs_process_final
+
+hdfs_process_final >> run_calculate_kpis >> kpis_calculated
