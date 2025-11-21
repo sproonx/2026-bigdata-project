@@ -43,6 +43,12 @@ the pipeline consists of three main phases:
 
 ![airflow_diagram](airflow_diagram.png)
 
+### Personal Challengaes 
+- There are 2 types of csv containing ride data -> Unify into a shared df format.
+- For the older data format, there is no birth date so KPIs relating to age are left out.
+- In the old format there is no station information directly included in each row so we first have to join with a station csv.
+- The old format has data only on a yearly basis so we partition by /yyyy/MM for final data in HDFS
+
 ## Airflow DAG: `BikeSharing`
 
 **File:** airflow_vol/dag_flow.py
