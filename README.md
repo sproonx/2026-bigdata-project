@@ -178,7 +178,7 @@ the pipeline consists of three main phases:
 | KPI Category | Metrics | Business Rules |
 |--------------|---------|----------------|
 | **Trip Statistics** | Average trip duration (minutes), Average trip distance (km) | Aggregated monthly, rounded to 2 decimals |
-| **Demographics** | Gender distribution (%) by gender code | Percentage of total trips with non-null gender |
+| **Demographics** | Gender distribution (%) by gender code | Percentage of total trips with non-null gender. (male=1, female=2, unregistered=0) |
 | **Age Analysis** | Age group distribution (%) | Groups: 10-19, 20-29, 30-39, 40-49, 50-59, 60-69, 70+<br>Calculated from birth year (excludes ages <10 or >100) |
 | **Asset Utilization** | Top 10 bikes by trip count | Bike ID with trip count |
 | **Station Popularity** | Top 10 start stations by trip count<br>Top 10 end stations by trip count | Station name with trip count |
