@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, to_timestamp, when, lit, round as spark_round, radians, sin, cos, atan2, sqrt, date_format, hour
+    col, to_timestamp, when, lit, round as spark_round, radians, sin, cos, atan2, sqrt, date_format, hour, sum as spark_sum
 )
 from pyspark.sql.types import DoubleType, IntegerType, StringType
 import re
@@ -39,7 +39,7 @@ def read_stations_data(spark, stations_path):
             .option('inferSchema', 'true')
             .csv(stations_path)
             .select(
-                col('Station ID').cast(IntegerType()).alias('station_id'),
+                col('Station ID').cast(StringType()).alias('station_id'),
                 col('Latitude').cast(DoubleType()).alias('latitude'),
                 col('Longitude').cast(DoubleType()).alias('longitude')
             )
@@ -59,7 +59,7 @@ def read_stations_data(spark, stations_path):
 
 def add_temporal_columns(df):
     df = (
-        df.withColumn('trip_duration_min', spark_round(col('Duration') / 60.0, 2))
+        df.withColumn('trip_duration_min', spark_round(col('Duration') / 60000.0, 2)) # old data has milliseconds
         .withColumn('trip_start_ts', to_timestamp(col('Start date'), 'M/d/yyyy H:mm'))
         .withColumn('trip_end_ts', to_timestamp(col('End date'), 'M/d/yyyy H:mm'))
         .withColumn('year', date_format(col('trip_start_ts'), 'yyyy'))
@@ -137,26 +137,18 @@ def join_station_data(df, stations):
     
     return df
 
-
 def validate_and_clean_data(df):
     df = df.filter(
-        # valid timestamps
         col('trip_start_ts').isNotNull() &
         col('trip_end_ts').isNotNull() &
         (col('trip_end_ts') > col('trip_start_ts')) &
-        # valid time_slot
         col('time_slot').isNotNull() &
-        # valid duration
         col('trip_duration_min').between(1, 1440) &
-        # reasonable distance
         col('trip_distance_m').between(0, 50000) &
-        # has station IDs
         col('start_station_id').isNotNull() &
         col('end_station_id').isNotNull()
     )
-    
     return df
-
 
 def process_csv_file(spark, csv_path, stations):
     df = (
@@ -183,9 +175,9 @@ def process_csv_file(spark, csv_path, stations):
         col('trip_duration_min').cast(DoubleType()),
         col('trip_start_ts'),
         col('trip_end_ts'),
-        col('Start station number').cast(IntegerType()).alias('start_station_id'),
+        col('Start station number').cast(StringType()).alias('start_station_id'),
         col('Start station name').cast(StringType()).alias('start_station_name'),
-        col('End station number').cast(IntegerType()).alias('end_station_id'),
+        col('End station number').cast(StringType()).alias('end_station_id'),
         col('End station name').cast(StringType()).alias('end_station_name'),
         col('Bike number').cast(StringType()).alias('bike_id'),
         col('birth_year').cast(IntegerType()),
@@ -195,7 +187,8 @@ def process_csv_file(spark, csv_path, stations):
         col('year').cast(StringType()),
         col('month').cast(StringType()),
     )
-    
+    print(f"  Total records before cleaning: {df.count()}")
+
     df = validate_and_clean_data(df)
 
     return df
