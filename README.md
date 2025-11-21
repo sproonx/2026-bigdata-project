@@ -156,7 +156,7 @@ the pipeline consists of three main phases:
 - **Data Validation:** Same filtering criteria as new format
 - **Station Validation:** Validates station master data:
   - Coordinates in valid ranges (lat: -90 to 90, lon: -180 to 180)
-  - Station ID successfully casts to integer
+  - Station ID as String
   - Logs duplicate station IDs and validation failures
 
 ### 3. Calculate KPIs
