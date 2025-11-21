@@ -113,6 +113,8 @@ the pipeline consists of three main phases:
 
 **File:** cleanNewFormat.py
 
+**Helper File** utilFormat.py (Shared/Common functions for both old and new data)
+
 **Purpose:** Processes bikesharing trip data from 2016 onwards (new format with embedded station coordinates).
 
 **Input:** HDFS `/data/bikesharing/raw/YYYYMM/data.csv` folders
@@ -135,6 +137,8 @@ the pipeline consists of three main phases:
 ### 2. Clean Old Format Data
 
 **File:** cleanOldFormat.py
+
+**Helper File** utilFormat.py (Shared/Common functions for both old and new data)
 
 **Purpose:** Processes bikesharing trip data from 2011-2015 (old format requiring station lookup). . We do not use precreated folders as they created automatically when saving with spark.
 
@@ -183,7 +187,9 @@ the pipeline consists of three main phases:
 **Output Format:**
 - One Excel sheet per year
 - Each row represents one month
-- Columns dynamically include all calculated KPIs
+- Columns dynamically include all calculated KPIs 
+- Top N KPIs use sorted tuple list of (KEY , AMOUNT)
+- Age Share uses tuple list of (AGE_RANGE, PERCENT)
 
 ## Plugin Files
 
