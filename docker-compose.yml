@@ -30,16 +30,10 @@ services:
       - ./airflow_vol/dags:/home/airflow/airflow/dags
       - ./airflow_vol/plugins/:/home/airflow/airflow/plugins
       - ./airflow_vol/spark/:/home/airflow/airflow/spark
+      - ./airflow_vol/startup.sh:/startup.sh
     ports:
       - "8080:8080"
     networks:
       - bigdatanet
     depends_on:
       - hadoop
-    command: >
-      bash -c "pip3 install openpyxl &&
-      airflow db init &&
-      airflow webserver &
-      airflow scheduler &
-      tail -f /dev/null"
-
