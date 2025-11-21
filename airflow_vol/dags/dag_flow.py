@@ -7,7 +7,6 @@ from airflow.operators.http_download_operations import HttpDownloadOperator
 from airflow.operators.zip_folder_operations import UnzipFolderOperator
 from airflow.operators.hdfs_operations import (
     HdfsPutFilesOperator,
-    HdfsGetFileOperator,
     HdfsMkdirsFileOperator,
 )
 from airflow.operators.filesystem_operations import (
