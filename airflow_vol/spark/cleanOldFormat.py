@@ -97,7 +97,8 @@ def main():
             df.withColumn('trip_duration_min', spark_round(col('Duration') / 60.0, 2))
             .withColumn('trip_start_ts', to_timestamp(col('Start date'), 'M/d/yyyy H:mm'))
             .withColumn('trip_end_ts', to_timestamp(col('End date'), 'M/d/yyyy H:mm'))
-            .withColumn('year_month', date_format(col('trip_start_ts'), 'yyyyMM'))
+            .withColumn('year', date_format(col('trip_start_ts'), 'yyyy'))
+            .withColumn('month', date_format(col('trip_start_ts'), 'MM'))
         )
 
         start_stations = stations.select(
@@ -159,7 +160,8 @@ def main():
             'birth_year',
             col('Gender').alias('gender'),
             'trip_distance_m',
-            'year_month',
+            'year',
+            'month',
         )
 
         df_list.append(df)
@@ -170,7 +172,7 @@ def main():
 
     (
         final_df.write.mode('overwrite')
-        .partitionBy('year_month')
+        .partitionBy('year', 'month')
         .parquet(output_path)
     )
 

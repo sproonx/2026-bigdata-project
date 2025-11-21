@@ -74,7 +74,8 @@ def main():
                 when(col("gender") == "\\N", None)
                 .otherwise(col("gender").cast(IntegerType()))
             )
-            .withColumn("year_month", lit(ym))
+            .withColumn("year", lit(ym[:4]))
+            .withColumn("month", lit(ym[4:6]))
         )
 
    
@@ -114,7 +115,8 @@ def main():
             "birth_year",
             "gender",
             "trip_distance_m",
-            "year_month",
+            "year",
+            "month",
         )
 
         df_list.append(df)
@@ -125,7 +127,7 @@ def main():
 
     (
         final_df.write.mode("overwrite")
-        .partitionBy("year_month")
+        .partitionBy("year", "month")
         .parquet(output_path)
     )
 

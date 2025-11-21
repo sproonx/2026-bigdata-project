@@ -109,22 +109,21 @@ create_raw_hdfs_dir_old_format = HdfsMkdirsFileOperator(
 )
 create_raw_hdfs_dir_old_format.set_upstream(get_yyyy_old_format)
 
+#get_yyyyMM_old_format = PythonOperator(
+#     task_id="get_yyyyMM_old_format",
+#     python_callable=get_yyyyMM_old_format,
+#     op_kwargs={"parent_dir_path": "/home/airflow/bikesharing_input/hubway_data/"},
+#     dag=dag,
+# )
 
-get_yyyyMM_old_format = PythonOperator(
-    task_id="get_yyyyMM_old_format",
-    python_callable=get_yyyyMM_old_format,
-    op_kwargs={"parent_dir_path": "/home/airflow/bikesharing_input/hubway_data/"},
-    dag=dag,
-)
-
-create_raw_hdfs_dir_old_format_with_months = HdfsMkdirsFileOperator(
-    task_id="create_raw_hdfs_dir_old_format_with_months",
-    parent_directory="/data/bikesharing/raw/",
-    folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_old_format') }}",
-    hdfs_conn_id="hdfs",
-    dag=dag,    
-)
-create_raw_hdfs_dir_old_format_with_months.set_upstream(get_yyyyMM_old_format)
+# create_raw_hdfs_dir_old_format_with_months = HdfsMkdirsFileOperator(
+#     task_id="create_raw_hdfs_dir_old_format_with_months",
+#     parent_directory="/data/bikesharing/raw/",
+#     folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_old_format') }}",
+#     hdfs_conn_id="hdfs",
+#     dag=dag,    
+# )
+# create_raw_hdfs_dir_old_format_with_months.set_upstream(get_yyyyMM_old_format)
 
 get_yyyyMM_new_format = PythonOperator(
     task_id="get_yyyyMM_new_format",
@@ -141,24 +140,6 @@ create_raw_hdfs_dir_new_format = HdfsMkdirsFileOperator(
     dag=dag,
 )
 create_raw_hdfs_dir_new_format.set_upstream(get_yyyyMM_new_format)
-
-create_final_hdfs_dir_old_format_with_months = HdfsMkdirsFileOperator(
-    task_id="create_final_hdfs_dir_old_format_with_months",
-    parent_directory="/data/bikesharing/final/",
-    folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_old_format') }}",
-    hdfs_conn_id="hdfs",
-    dag=dag,    
-)
-create_final_hdfs_dir_old_format_with_months.set_upstream(get_yyyyMM_old_format)
-
-create_final_hdfs_dir_new_format = HdfsMkdirsFileOperator(
-    task_id="create_final_hdfs_dir_new_format",
-    parent_directory="/data/bikesharing/final/",
-    folder_names="{{ task_instance.xcom_pull(task_ids='get_yyyyMM_new_format') }}",
-    hdfs_conn_id="hdfs",
-    dag=dag,
-)
-create_final_hdfs_dir_new_format.set_upstream(get_yyyyMM_new_format)
 
 get_mv_import_raw_pairs = PythonOperator(
     task_id="get_mv_import_raw_pairs",
@@ -219,10 +200,7 @@ data_import >> create_local_import_dir >> clear_local_import_dir >> download_hub
 data_import >> create_local_output_dir >> clear_local_output_dir >> download_hubway_data
 
 hdfs_setup >> combine_split_years_old_format >> get_yyyy_old_format >> create_raw_hdfs_dir_old_format >> get_mv_import_raw_pairs
-hdfs_setup >> combine_split_years_old_format >> get_yyyyMM_old_format >> create_raw_hdfs_dir_old_format_with_months >> get_mv_import_raw_pairs
-get_yyyyMM_old_format >> create_final_hdfs_dir_old_format_with_months
 hdfs_setup >> get_yyyyMM_new_format >> create_raw_hdfs_dir_new_format >> get_mv_import_raw_pairs
-get_yyyyMM_new_format >> create_final_hdfs_dir_new_format
 
 get_mv_import_raw_pairs >> hdfs_put_files
 get_mv_import_raw_pairs >> hdfs_put_files_station
