@@ -1,3 +1,7 @@
+| Name | Mtr |
+| ---- | --- |
+| Elias Klett | 5786232 |
+
 ## Overview
 ETL workflow to work with hubway bosten bikerental data. It is fully automatically calculating the following KPIs:
 
