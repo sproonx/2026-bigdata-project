@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    col, to_timestamp, when, lit, round as spark_round, radians, sin, cos, atan2, sqrt, hour
-)
+from pyspark.sql.functions import (col, to_timestamp, when, lit, round as spark_round, hour)
 from pyspark.sql.types import IntegerType, DoubleType, StringType
 import re
 import argparse
+from utilFormat import add_time_slot, calculate_haversine_distance, validate_and_clean_data, write_parquet_output
 
 FOLDER_PATTERN = re.compile(r"^[0-9]{6}$")
 CSV_FILE_NAME = "data.csv"
@@ -59,61 +58,7 @@ def add_temporal_columns(df, ym):
         .withColumn("year", lit(ym[:4]))
         .withColumn("month", lit(ym[4:6]))
     )
-    
-    # assign time_slot
-    df = df.withColumn('trip_hour', hour(col('trip_start_ts')))
-    df = df.withColumn(
-        'time_slot',
-        when((col('trip_hour') >= 0) & (col('trip_hour') < 6), "00:00-06:00")
-        .when((col('trip_hour') >= 6) & (col('trip_hour') < 12), "06:00-12:00")
-        .when((col('trip_hour') >= 12) & (col('trip_hour') < 18), "12:00-18:00")
-        .when((col('trip_hour') >= 18) & (col('trip_hour') < 24), "18:00-24:00")
-        .otherwise("Unknown")
-    ).drop('trip_hour')
-    
-    return df
-
-
-def calculate_haversine_distance(df):
-    R = 6371000.0  # earht radius in meters
-
-    df = (
-        df.withColumn("lat1", radians(col("start station latitude")))
-        .withColumn("lon1", radians(col("start station longitude")))
-        .withColumn("lat2", radians(col("end station latitude")))
-        .withColumn("lon2", radians(col("end station longitude")))
-        .withColumn("dlat", col("lat2") - col("lat1"))
-        .withColumn("dlon", col("lon2") - col("lon1"))
-        .withColumn(
-            "a",
-            sin(col("dlat") / 2) ** 2
-            + cos(col("lat1")) * cos(col("lat2")) * sin(col("dlon") / 2) ** 2
-        )
-        .withColumn("c", 2 * atan2(sqrt(col("a")), sqrt(1 - col("a"))))
-        .withColumn("trip_distance_m", spark_round(R * col("c"), 2))
-        .drop("lat1", "lon1", "lat2", "lon2", "dlat", "dlon", "a", "c", "birth_year_raw")
-    )
-    
-    return df
-
-
-def validate_and_clean_data(df):
-    df = df.filter(
-        # valid timestamps
-        col('trip_start_ts').isNotNull() &
-        col('trip_end_ts').isNotNull() &
-        (col('trip_end_ts') > col('trip_start_ts')) &
-        # valid time_slot
-        col('time_slot').isNotNull() &
-        # valid duration
-        col('trip_duration_min').between(1, 1440) &
-        # reasonable distance
-        col('trip_distance_m').between(0, 50000) &
-        # has station IDs
-        col('start_station_id').isNotNull() &
-        col('end_station_id').isNotNull()
-    )
-    
+    df = add_time_slot(df, "trip_start_ts")
     return df
 
 
@@ -127,8 +72,15 @@ def process_csv_file(spark, csv_path, ym):
     )
 
     df = add_temporal_columns(df, ym)
-    df = normalize_birth_year(df)    
-    df = calculate_haversine_distance(df)
+    df = normalize_birth_year(df)
+    df = calculate_haversine_distance(
+        df,
+        start_lat_col="start station latitude",
+        start_lon_col="start station longitude",
+        end_lat_col="end station latitude",
+        end_lon_col="end station longitude",
+        output_col="trip_distance_m"
+    )
 
     df = df.withColumn(
         "gender",
@@ -156,16 +108,7 @@ def process_csv_file(spark, csv_path, ym):
     )
     
     df = validate_and_clean_data(df)
-
     return df
-
-
-def write_parquet_output(df, output_path):
-    (
-        df.write.mode("overwrite")
-        .partitionBy("year", "month")
-        .parquet(output_path)
-    )
 
 
 def main():

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
-    col, hour, count, avg, sum as spark_sum, when, lit, 
-    round as spark_round, row_number, desc, concat_ws
+    col, hour, count, avg, sum as spark_sum, when, lit, round as spark_round, row_number, desc, concat_ws
 )
 from pyspark.sql.window import Window
 from pyspark.sql.types import IntegerType
@@ -32,6 +31,77 @@ def validate_input_data(df):
     return df
 
 
+def month_kpis(month_df, year, month):
+    row = {"Year": year, "Month": month}
+
+    avg_dur = month_df.agg(avg(col("trip_duration_min")).alias("avg_dur")).first().avg_dur
+    row["Avg Trip Duration (min)"] = round(avg_dur, 2) if avg_dur else None
+
+    avg_dist = month_df.agg(avg(col("trip_distance_km")).alias("avg_dist")).first().avg_dist
+    row["Avg Trip Distance (km)"] = round(avg_dist, 2) if avg_dist else None
+
+    gender_rows = (
+        month_df.filter(col("gender").isNotNull())
+                .groupBy("gender")
+                .agg(count("*").alias("count"))
+                .collect()
+    )
+    total_gender = sum(r["count"] for r in gender_rows)
+    for g in gender_rows:
+        pct = round((g["count"] / total_gender) * 100, 2) if total_gender else 0
+        row[f"Gender {g['gender']} (%)"] = pct
+
+    age_data = (
+        month_df.filter(col("age").isNotNull())
+        .filter((col("age") >= 10) & (col("age") <= 100))
+        .withColumn(
+            "age_group",
+            when(col("age") < 20, "10-19")
+            .when(col("age") < 30, "20-29")
+            .when(col("age") < 40, "30-39")
+            .when(col("age") < 50, "40-49")
+            .when(col("age") < 60, "50-59")
+            .when(col("age") < 70, "60-69")
+            .otherwise("70+")
+        )
+        .groupBy("age_group")
+        .agg(count("*").alias("count"))
+        .collect()
+    )
+    total_age = sum([r["count"] for r in age_data])
+    age_distribution = [
+        (a_row["age_group"], round((a_row["count"] / total_age) * 100, 2) if total_age > 0 else 0)
+        for a_row in age_data
+    ]
+    row["Age Distribution (%)"] = age_distribution
+
+    top_bikes = (
+        month_df.groupBy("bike_id").agg(count("*").alias("count"))
+                .orderBy(desc("count")).limit(10).collect()
+    )
+    row["Top 10 Bikes"] = [(r["bike_id"], r["count"]) for r in top_bikes]
+
+    top_start = (
+        month_df.groupBy("start_station_name").agg(count("*").alias("count"))
+                .orderBy(desc("count")).limit(10).collect()
+    )
+    row["Top 10 Start Stations"] = [(r["start_station_name"], r["count"]) for r in top_start]
+
+    top_end = (
+        month_df.groupBy("end_station_name").agg(count("*").alias("count"))
+                .orderBy(desc("count")).limit(10).collect()
+    )
+    row["Top 10 End Stations"] = [(r["end_station_name"], r["count"]) for r in top_end]
+
+    timeslot_rows = month_df.groupBy("time_slot").agg(count("*").alias("count")).collect()
+    total_ts = sum(r["count"] for r in timeslot_rows)
+    for ts in timeslot_rows:
+        pct = round((ts["count"] / total_ts) * 100, 2) if total_ts else 0
+        row[f"Timeslot {ts['time_slot']} (%)"] = pct
+
+    return row
+
+
 def main():
     parser = argparse.ArgumentParser(description="Calculate KPIs for bikesharing data")
     parser.add_argument("--input-path", dest="input_path", required=True, 
@@ -53,161 +123,39 @@ def main():
     df = validate_input_data(df)
 
     df = df.withColumn("trip_distance_km", spark_round(col("trip_distance_m") / 1000.0, 2))
-    
     df = df.withColumn(
-        "age", 
-        when(col("birth_year").isNotNull(), 
+        "age",
+        when(col("birth_year").isNotNull(),
              calculate_age_from_birth_year(col("year"), col("month"), col("birth_year")))
         .otherwise(None)
-    )
-
-    df = df.withColumn("year_month", concat_ws("-", col("year"), col("month")))
+    ).withColumn("year_month", concat_ws("-", col("year"), col("month")))
 
     df.cache()
-
     print(f"Writing KPIs to {output_path}")
-    
-    years = df.select("year").distinct().orderBy("year").rdd.flatMap(lambda x: x).collect()
-    
+
+    years = [r.year for r in df.select("year").distinct().orderBy("year").collect()]
     if not years:
         print("Warning: No data found in input")
         spark.stop()
         return
-    
+
     with pd.ExcelWriter(output_path, engine='openpyxl') as writer:
         for year in years:
             print(f"Processing KPIs for year {year}")
-            
             year_df = df.filter(col("year") == year)
-            
-            months = (
-                year_df.select("month")
-                .distinct()
-                .orderBy("month")
-                .rdd.flatMap(lambda x: x)
-                .collect()
-            )
-            
+            months = [r.month for r in year_df.select("month").distinct().orderBy("month").collect()]
             kpi_rows = []
-            
             for month in months:
                 month_df = year_df.filter(col("month") == month)
-                year_month = f"{year}-{month}"
-                
-                row_data = {"Year": year, "Month": month}
-                
-                avg_dur = month_df.agg(avg(col("trip_duration_min"))).collect()[0][0]
-                row_data["Avg Trip Duration (min)"] = round(avg_dur, 2) if avg_dur else None
-                
-                avg_dist = month_df.agg(avg(col("trip_distance_km"))).collect()[0][0]
-                row_data["Avg Trip Distance (km)"] = round(avg_dist, 2) if avg_dist else None
-                
-                gender_data = (
-                    month_df.filter(col("gender").isNotNull())
-                    .groupBy("gender")
-                    .agg(count("*").alias("count"))
-                    .collect()
-                )
-                total_gender = sum([r["count"] for r in gender_data])
-                for g_row in gender_data:
-                    gender = g_row["gender"]
-                    pct = round((g_row["count"] / total_gender) * 100, 2) if total_gender > 0 else 0
-                    row_data[f"Gender {gender} (%)"] = pct
-                
-                age_data = (
-                    month_df.filter(col("age").isNotNull())
-                    .filter((col("age") >= 10) & (col("age") <= 100))
-                    .withColumn(
-                        "age_group",
-                        when(col("age") < 20, "10-19")
-                        .when(col("age") < 30, "20-29")
-                        .when(col("age") < 40, "30-39")
-                        .when(col("age") < 50, "40-49")
-                        .when(col("age") < 60, "50-59")
-                        .when(col("age") < 70, "60-69")
-                        .otherwise("70+")
-                    )
-                    .groupBy("age_group")
-                    .agg(count("*").alias("count"))
-                    .collect()
-                )
-                age_data = (
-                    month_df.filter(col("age").isNotNull())
-                    .filter((col("age") >= 10) & (col("age") <= 100))
-                    .withColumn(
-                        "age_group",
-                        when(col("age") < 20, "10-19")
-                        .when(col("age") < 30, "20-29")
-                        .when(col("age") < 40, "30-39")
-                        .when(col("age") < 50, "40-49")
-                        .when(col("age") < 60, "50-59")
-                        .when(col("age") < 70, "60-69")
-                        .otherwise("70+")
-                    )
-                    .groupBy("age_group")
-                    .agg(count("*").alias("count"))
-                    .collect()
-                )
-                total_age = sum([r["count"] for r in age_data])
-                age_distribution = [
-                    (a_row["age_group"], round((a_row["count"] / total_age) * 100, 2) if total_age > 0 else 0)
-                    for a_row in age_data
-                ]
-                row_data["Age Distribution (%)"] = age_distribution
-                
-                top_bikes_data = (
-                    month_df.groupBy("bike_id")
-                    .agg(count("*").alias("count"))
-                    .orderBy(desc("count"))
-                    .limit(10)
-                    .collect()
-                )
-                row_data["Top 10 Bikes"] = [(row['bike_id'], row['count']) for row in top_bikes_data]
-                
-                top_start_data = (
-                    month_df.groupBy("start_station_name")
-                    .agg(count("*").alias("count"))
-                    .orderBy(desc("count"))
-                    .limit(10)
-                    .collect()
-                )
-                row_data["Top 10 Start Stations"] = [(row['start_station_name'], row['count']) for row in top_start_data]
-                
-                top_end_data = (
-                    month_df.groupBy("end_station_name")
-                    .agg(count("*").alias("count"))
-                    .orderBy(desc("count"))
-                    .limit(10)
-                    .collect()
-                )
-                row_data["Top 10 End Stations"] = [(row['end_station_name'], row['count']) for row in top_end_data]
-                
-                timeslot_data = (
-                    month_df.groupBy("time_slot")
-                    .agg(count("*").alias("count"))
-                    .collect()
-                )
-                total_timeslot = sum([r["count"] for r in timeslot_data])
-                for ts_row in timeslot_data:
-                    time_slot = ts_row["time_slot"]
-                    pct = round((ts_row["count"] / total_timeslot) * 100, 2) if total_timeslot > 0 else 0
-                    row_data[f"Timeslot {time_slot} (%)"] = pct
-                
-                kpi_rows.append(row_data)
-            
-            # write months to year sheet
+                kpi_rows.append(month_kpis(month_df, year, month))
             if kpi_rows:
-                year_pdf = pd.DataFrame(kpi_rows)
-                sheet_name = str(year)
-                year_pdf.to_excel(writer, sheet_name=sheet_name, index=False)
-                print(f"Written {len(kpi_rows)} months to sheet '{sheet_name}'")
+                pd.DataFrame(kpi_rows).to_excel(writer, sheet_name=str(year), index=False)
+                print(f"Written {len(kpi_rows)} months to sheet '{year}'")
 
     df.unpersist()
-
     print("KPI calculation completed successfully!")
     print(f"Excel file saved to: {output_path}")
     spark.stop()
-
 
 if __name__ == "__main__":
     main()

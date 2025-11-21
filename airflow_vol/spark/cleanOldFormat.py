@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import (
-    col, to_timestamp, when, lit, round as spark_round, radians, sin, cos, atan2, sqrt, date_format, hour, sum as spark_sum
-)
+from pyspark.sql.functions import (col, to_timestamp, when, lit, round as spark_round, date_format, hour, sum as spark_sum)
 from pyspark.sql.types import DoubleType, IntegerType, StringType
 import re
 import argparse
+from utilFormat import add_time_slot, calculate_haversine_distance, validate_and_clean_data, write_parquet_output
 
 FOLDER_PATTERN = re.compile(r"^[0-9]{4}$")
 STATIONS_DEFAULT_NAME = "Hubway_Stations_2011_2016.csv"
@@ -59,49 +58,14 @@ def read_stations_data(spark, stations_path):
 
 def add_temporal_columns(df):
     df = (
-        df.withColumn('trip_duration_min', spark_round(col('Duration') / 60000.0, 2)) # old data has milliseconds
+        df.withColumn('trip_duration_min', spark_round(col('Duration') / 60000.0, 2))  # ms -> minutes
         .withColumn('trip_start_ts', to_timestamp(col('Start date'), 'M/d/yyyy H:mm'))
         .withColumn('trip_end_ts', to_timestamp(col('End date'), 'M/d/yyyy H:mm'))
         .withColumn('year', date_format(col('trip_start_ts'), 'yyyy'))
         .withColumn('month', date_format(col('trip_start_ts'), 'MM'))
     )
-    
-    # assign time_slot
-    df = df.withColumn('trip_hour', hour(col('trip_start_ts')))
-    df = df.withColumn(
-        'time_slot',
-        when((col('trip_hour') >= 0) & (col('trip_hour') < 6), "00:00-06:00")
-        .when((col('trip_hour') >= 6) & (col('trip_hour') < 12), "06:00-12:00")
-        .when((col('trip_hour') >= 12) & (col('trip_hour') < 18), "12:00-18:00")
-        .when((col('trip_hour') >= 18) & (col('trip_hour') < 24), "18:00-24:00")
-        .otherwise("Unknown")
-    ).drop('trip_hour')
-
-    # add null birth_year column
+    df = add_time_slot(df, 'trip_start_ts')
     df = df.withColumn('birth_year', lit(None).cast(IntegerType()))
-    
-    return df
-
-
-def calculate_haversine_distance(df):
-    R = 6371000.0  # earht radius in meters
-
-    df = (
-        df.withColumn('lat1', radians(col('start_latitude')))
-        .withColumn('lon1', radians(col('start_longitude')))
-        .withColumn('lat2', radians(col('end_latitude')))
-        .withColumn('lon2', radians(col('end_longitude')))
-        .withColumn('dlat', col('lat2') - col('lat1'))
-        .withColumn('dlon', col('lon2') - col('lon1'))
-        .withColumn(
-            'a',
-            sin(col('dlat') / 2) ** 2 + cos(col('lat1')) * cos(col('lat2')) * sin(col('dlon') / 2) ** 2
-        )
-        .withColumn('c', 2 * atan2(sqrt(col('a')), sqrt(1 - col('a'))))
-        .withColumn('trip_distance_m', spark_round(R * col('c'), 2))
-        .drop('lat1', 'lon1', 'lat2', 'lon2', 'dlat', 'dlon', 'a', 'c')
-    )
-    
     return df
 
 
@@ -137,19 +101,6 @@ def join_station_data(df, stations):
     
     return df
 
-def validate_and_clean_data(df):
-    df = df.filter(
-        col('trip_start_ts').isNotNull() &
-        col('trip_end_ts').isNotNull() &
-        (col('trip_end_ts') > col('trip_start_ts')) &
-        col('time_slot').isNotNull() &
-        col('trip_duration_min').between(1, 1440) &
-        col('trip_distance_m').between(0, 50000) &
-        col('start_station_id').isNotNull() &
-        col('end_station_id').isNotNull()
-    )
-    return df
-
 def process_csv_file(spark, csv_path, stations):
     df = (
         spark.read.option('header', 'true')
@@ -161,8 +112,15 @@ def process_csv_file(spark, csv_path, stations):
     
     df = add_temporal_columns(df)
     df = join_station_data(df, stations)
-    df = calculate_haversine_distance(df)
-    
+    df = calculate_haversine_distance(
+        df,
+        start_lat_col='start_latitude',
+        start_lon_col='start_longitude',
+        end_lat_col='end_latitude',
+        end_lon_col='end_longitude',
+        output_col='trip_distance_m'
+    )
+
     df = df.withColumn(
         'gender',
         when(col('Gender').isNull(), None)
@@ -190,16 +148,7 @@ def process_csv_file(spark, csv_path, stations):
     print(f"  Total records before cleaning: {df.count()}")
 
     df = validate_and_clean_data(df)
-
     return df
-
-
-def write_parquet_output(df, output_path):
-    (
-        df.write.mode('overwrite')
-        .partitionBy('year', 'month')
-        .parquet(output_path)
-    )
 
 
 def main():
