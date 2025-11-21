@@ -34,12 +34,13 @@ the pipeline consists of three main phases:
 - Processes two different data formats (old and new) seperately using Spark
 - Joins old_format trip data with Station location information
 - Validates and cleanses data based on business rules
-- Stores cleaned data in partitioned Parquet format
+- Stores cleaned data in partitioned Parquet format under final (/data/bikesharing/final/year=XXXX/month=YY/*
 
 ### 3. **Transform 2 + Load Phase**
-- Reads cleaned "final" data from HDFS
+- Reads cleaned final data from HDFS
 - Calculates monthly KPIs per month and year
 - Outputs results to Excel file with one spreedsheet per year
+- Each KPI has own column
 
 ![airflow_diagram](airflow_diagram.png)
 
