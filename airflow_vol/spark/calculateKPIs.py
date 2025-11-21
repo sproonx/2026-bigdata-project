@@ -131,11 +131,29 @@ def main():
                     .agg(count("*").alias("count"))
                     .collect()
                 )
+                age_data = (
+                    month_df.filter(col("age").isNotNull())
+                    .filter((col("age") >= 10) & (col("age") <= 100))
+                    .withColumn(
+                        "age_group",
+                        when(col("age") < 20, "10-19")
+                        .when(col("age") < 30, "20-29")
+                        .when(col("age") < 40, "30-39")
+                        .when(col("age") < 50, "40-49")
+                        .when(col("age") < 60, "50-59")
+                        .when(col("age") < 70, "60-69")
+                        .otherwise("70+")
+                    )
+                    .groupBy("age_group")
+                    .agg(count("*").alias("count"))
+                    .collect()
+                )
                 total_age = sum([r["count"] for r in age_data])
-                for a_row in age_data:
-                    age_group = a_row["age_group"]
-                    pct = round((a_row["count"] / total_age) * 100, 2) if total_age > 0 else 0
-                    row_data[f"Age {age_group} (%)"] = pct
+                age_distribution = [
+                    (a_row["age_group"], round((a_row["count"] / total_age) * 100, 2) if total_age > 0 else 0)
+                    for a_row in age_data
+                ]
+                row_data["Age Distribution (%)"] = age_distribution
                 
                 top_bikes_data = (
                     month_df.groupBy("bike_id")
@@ -144,8 +162,7 @@ def main():
                     .limit(10)
                     .collect()
                 )
-                for i, bike_row in enumerate(top_bikes_data, 1):
-                    row_data[f"Top Bike {i}"] = f"{bike_row['bike_id']} ({bike_row['count']})"
+                row_data["Top 10 Bikes"] = [(row['bike_id'], row['count']) for row in top_bikes_data]
                 
                 top_start_data = (
                     month_df.groupBy("start_station_name")
@@ -154,8 +171,7 @@ def main():
                     .limit(10)
                     .collect()
                 )
-                for i, station_row in enumerate(top_start_data, 1):
-                    row_data[f"Top Start Station {i}"] = f"{station_row['start_station_name']} ({station_row['count']})"
+                row_data["Top 10 Start Stations"] = [(row['start_station_name'], row['count']) for row in top_start_data]
                 
                 top_end_data = (
                     month_df.groupBy("end_station_name")
@@ -164,8 +180,7 @@ def main():
                     .limit(10)
                     .collect()
                 )
-                for i, station_row in enumerate(top_end_data, 1):
-                    row_data[f"Top End Station {i}"] = f"{station_row['end_station_name']} ({station_row['count']})"
+                row_data["Top 10 End Stations"] = [(row['end_station_name'], row['count']) for row in top_end_data]
                 
                 timeslot_data = (
                     month_df.groupBy("time_slot")
