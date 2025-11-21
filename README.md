@@ -116,7 +116,7 @@ the pipeline consists of three main phases:
 
 **Input:** HDFS `/data/bikesharing/raw/YYYYMM/data.csv` folders
 
-**Output:** HDFS `/data/bikesharing/final/` (Parquet, partitioned by year/month)
+**Output:** HDFS `/data/bikesharing/final/` (Parquet, partitioned by year/month). We do not use precreated folders as they created automatically when saving with spark.
 
 **Business Rules:**
 - **Trip Duration:** Calculated from `tripduration` seconds, rounded to 2 decimal places in minutes
@@ -135,7 +135,8 @@ the pipeline consists of three main phases:
 
 **File:** cleanOldFormat.py
 
-**Purpose:** Processes bikesharing trip data from 2011-2015 (old format requiring station lookup).
+**Purpose:** Processes bikesharing trip data from 2011-2015 (old format requiring station lookup). . We do not use precreated folders as they created automatically when saving with spark.
+
 
 **Input:** 
 - HDFS `/data/bikesharing/raw/YYYY/data.csv` folders
