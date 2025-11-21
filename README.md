@@ -34,14 +34,21 @@ the pipeline consists of three main phases:
 - Processes two different data formats (old and new) seperately using Spark
 - Joins old_format trip data with Station location information
 - Validates and cleanses data based on business rules
-- Stores cleaned data in partitioned Parquet format
+- Stores cleaned data in partitioned Parquet format under final (/data/bikesharing/final/year=XXXX/month=YY/*
 
 ### 3. **Transform 2 + Load Phase**
-- Reads cleaned "final" data from HDFS
+- Reads cleaned final data from HDFS
 - Calculates monthly KPIs per month and year
 - Outputs results to Excel file with one spreedsheet per year
+- Each KPI has own column
 
 ![airflow_diagram](airflow_diagram.png)
+
+### Personal Challengaes 
+- There are 2 types of csv containing ride data -> Unify into a shared df format.
+- For the older data format, there is no birth date so KPIs relating to age are left out.
+- In the old format there is no station information directly included in each row so we first have to join with a station csv.
+- The old format has data only on a yearly basis so we partition by /yyyy/MM for final data in HDFS
 
 ## Airflow DAG: `BikeSharing`
 
@@ -110,7 +117,7 @@ the pipeline consists of three main phases:
 
 **Input:** HDFS `/data/bikesharing/raw/YYYYMM/data.csv` folders
 
-**Output:** HDFS `/data/bikesharing/final/` (Parquet, partitioned by year/month)
+**Output:** HDFS `/data/bikesharing/final/` (Parquet, partitioned by year/month). We do not use precreated folders as they created automatically when saving with spark.
 
 **Business Rules:**
 - **Trip Duration:** Calculated from `tripduration` seconds, rounded to 2 decimal places in minutes
@@ -129,7 +136,8 @@ the pipeline consists of three main phases:
 
 **File:** cleanOldFormat.py
 
-**Purpose:** Processes bikesharing trip data from 2011-2015 (old format requiring station lookup).
+**Purpose:** Processes bikesharing trip data from 2011-2015 (old format requiring station lookup). . We do not use precreated folders as they created automatically when saving with spark.
+
 
 **Input:** 
 - HDFS `/data/bikesharing/raw/YYYY/data.csv` folders
@@ -148,7 +156,7 @@ the pipeline consists of three main phases:
 - **Data Validation:** Same filtering criteria as new format
 - **Station Validation:** Validates station master data:
   - Coordinates in valid ranges (lat: -90 to 90, lon: -180 to 180)
-  - Station ID successfully casts to integer
+  - Station ID as String
   - Logs duplicate station IDs and validation failures
 
 ### 3. Calculate KPIs
